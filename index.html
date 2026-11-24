@@ -1,1 +1,170 @@
-привет
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Заметки в Supabase</title>
+
+    <style>
+        body {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 0 16px;
+            font: 18px/1.5 system-ui, sans-serif;
+        }
+
+        label {
+            display: block;
+        }
+
+        input, button {
+            font: inherit;
+            padding: 6px 10px;
+        }
+
+        li {
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Заметки в Supabase</h1>
+
+    <form id="note-form">
+        <label for="note-text">Текст заметки</label>
+        <input id="note-text" type="text" maxlength="200" required>
+        <button id="save-button" type="submit" disabled>Сохранить</button>
+    </form>
+
+    <p id="status" role="status"></p>
+
+    <h2>Последние заметки</h2>
+    <ul id="note-list"></ul>
+
+    <!-- Загружаем библиотеку Supabase для браузера. -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>// Вставь сюда адрес и публичный ключ своего проекта Supabase.
+    const SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co";
+    const SUPABASE_KEY = "YOUR_PUBLISHABLE_KEY";
+
+    const form = document.getElementById("note-form");
+    const input = document.getElementById("note-text");
+    const button = document.getElementById("save-button");
+    const statusMessage = document.getElementById("status");
+    const list = document.getElementById("note-list");
+
+    let db;
+
+    // Читаем последние 20 заметок из таблицы demo_notes.
+    async function loadNotes() {
+      const { data, error } = await db
+        .from("demo_notes")
+        .select("body")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        statusMessage.textContent = "Ошибка чтения: " + error.message;
+        return false;
+      }
+
+      // Очищаем старый список и выводим строки, полученные из базы.
+      list.textContent = "";
+
+      for (const note of data) {
+        const item = document.createElement("li");
+        item.textContent = note.body;
+        list.appendChild(item);
+      }
+
+      return true;
+    }
+
+    // Эта функция запускается при отправке формы.
+    async function saveNote(event) {
+      // Оставляем страницу открытой без перезагрузки.
+      event.preventDefault();
+
+      if (button.disabled) {
+        return;
+      }
+
+      const text = input.value.trim();
+
+      if (text === "") {
+        statusMessage.textContent = "Введи текст заметки.";
+        return;
+      }
+
+      // Блокируем кнопку до завершения записи.
+      button.disabled = true;
+      statusMessage.textContent = "Сохраняю…";
+
+      try {
+        // Передаём текст в столбец body. ID и время заполнит база.
+        const { error } = await db
+          .from("demo_notes")
+          .insert({ body: text });
+
+        if (error) {
+          statusMessage.textContent = "Ошибка записи: " + error.message;
+          return;
+        }
+
+        input.value = "";
+
+        // Повторно читаем таблицу, чтобы показать новую заметку.
+        const loaded = await loadNotes();
+
+        if (loaded) {
+          statusMessage.textContent = "Заметка сохранена.";
+        } else {
+          statusMessage.textContent =
+            "Заметка сохранена. " + statusMessage.textContent;
+        }
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    // Подключаемся к Supabase и загружаем список при открытии страницы.
+    async function start() {
+      if (
+        SUPABASE_URL.includes("YOUR_PROJECT_REF") ||
+        SUPABASE_KEY === "YOUR_PUBLISHABLE_KEY"
+      ) {
+        statusMessage.textContent =
+          "Укажи Project URL и Publishable key в коде index.html.";
+        return;
+      }
+
+      if (!window.supabase) {
+        statusMessage.textContent =
+          "Библиотека Supabase не загрузилась. Проверь интернет.";
+        return;
+      }
+
+      db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false }
+      });
+
+      form.addEventListener("submit", saveNote);
+      statusMessage.textContent = "Загружаю заметки…";
+
+      const loaded = await loadNotes();
+
+      if (loaded) {
+        statusMessage.textContent =
+          list.children.length === 0 ? "Заметок пока нет." : "";
+      }
+
+      button.disabled = false;
+    }
+
+    start().catch(function (error) {
+      statusMessage.textContent = "Ошибка подключения: " + error.message;
+    });</script>
+</body>
+</html>
