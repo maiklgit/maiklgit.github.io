@@ -1,170 +1,164 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Заметки в Supabase</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Работа с базой данных</title>
 
-    <style>
-        body {
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 0 16px;
-            font: 18px/1.5 system-ui, sans-serif;
-        }
+  <style>
+    body {
+      max-width: 520px;
+      margin: 40px auto;
+      padding: 0 16px;
+      font: 16px Arial, sans-serif;
+    }
 
-        label {
-            display: block;
-        }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; }
 
-        input, button {
-            font: inherit;
-            padding: 6px 10px;
-        }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    label { display: block; margin-bottom: 4px; }
 
-        li {
-            overflow-wrap: anywhere;
-        }
-    </style>
+    input {
+      box-sizing: border-box;
+      display: block;
+      width: 100%;
+      margin-bottom: 12px;
+      padding: 8px;
+      font: inherit;
+    }
+
+    button { padding: 8px 12px; font: inherit; }
+    #result { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
 </head>
 
 <body>
-    <h1>Заметки в Supabase</h1>
+  <h1>Работа с базой данных</h1>
 
-    <form id="note-form">
-        <label for="note-text">Текст заметки</label>
-        <input id="note-text" type="text" maxlength="200" required>
-        <button id="save-button" type="submit" disabled>Сохранить</button>
-    </form>
+  <form id="message-form">
+    <fieldset id="controls">
+      <label for="username">Имя пользователя:</label>
+      <input id="username" type="text" maxlength="50" required>
 
-    <p id="status" role="status"></p>
+      <label for="message">Сообщение:</label>
+      <input id="message" type="text" maxlength="200" required>
 
-    <h2>Последние заметки</h2>
-    <ul id="note-list"></ul>
+      <button type="submit">Записать в БД</button>
+      <button id="read-button" type="button">Прочитать из БД</button>
+    </fieldset>
+  </form>
 
-    <!-- Загружаем библиотеку Supabase для браузера. -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <h2>Результат:</h2>
+  <p id="result" role="status">Ожидание действий.</p>
 
-    <script>// Вставь сюда адрес и публичный ключ своего проекта Supabase.
+  <!-- Подключаем библиотеку Supabase. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // Вставь сюда адрес проекта и публичный ключ из Supabase → Connect.
     const SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co";
     const SUPABASE_KEY = "YOUR_PUBLISHABLE_KEY";
 
-    const form = document.getElementById("note-form");
-    const input = document.getElementById("note-text");
-    const button = document.getElementById("save-button");
-    const statusMessage = document.getElementById("status");
-    const list = document.getElementById("note-list");
+    const form = document.getElementById("message-form");
+    const controls = document.getElementById("controls");
+    const usernameInput = document.getElementById("username");
+    const messageInput = document.getElementById("message");
+    const result = document.getElementById("result");
 
     let db;
 
-    // Читаем последние 20 заметок из таблицы demo_notes.
-    async function loadNotes() {
-      const { data, error } = await db
-        .from("demo_notes")
-        .select("body")
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (error) {
-        statusMessage.textContent = "Ошибка чтения: " + error.message;
-        return false;
+    // Создаём клиент при первом обращении к базе.
+    function getDatabase() {
+      if (db) {
+        return db;
       }
 
-      // Очищаем старый список и выводим строки, полученные из базы.
-      list.textContent = "";
-
-      for (const note of data) {
-        const item = document.createElement("li");
-        item.textContent = note.body;
-        list.appendChild(item);
-      }
-
-      return true;
-    }
-
-    // Эта функция запускается при отправке формы.
-    async function saveNote(event) {
-      // Оставляем страницу открытой без перезагрузки.
-      event.preventDefault();
-
-      if (button.disabled) {
-        return;
-      }
-
-      const text = input.value.trim();
-
-      if (text === "") {
-        statusMessage.textContent = "Введи текст заметки.";
-        return;
-      }
-
-      // Блокируем кнопку до завершения записи.
-      button.disabled = true;
-      statusMessage.textContent = "Сохраняю…";
-
-      try {
-        // Передаём текст в столбец body. ID и время заполнит база.
-        const { error } = await db
-          .from("demo_notes")
-          .insert({ body: text });
-
-        if (error) {
-          statusMessage.textContent = "Ошибка записи: " + error.message;
-          return;
-        }
-
-        input.value = "";
-
-        // Повторно читаем таблицу, чтобы показать новую заметку.
-        const loaded = await loadNotes();
-
-        if (loaded) {
-          statusMessage.textContent = "Заметка сохранена.";
-        } else {
-          statusMessage.textContent =
-            "Заметка сохранена. " + statusMessage.textContent;
-        }
-      } finally {
-        button.disabled = false;
-      }
-    }
-
-    // Подключаемся к Supabase и загружаем список при открытии страницы.
-    async function start() {
-      if (
-        SUPABASE_URL.includes("YOUR_PROJECT_REF") ||
-        SUPABASE_KEY === "YOUR_PUBLISHABLE_KEY"
-      ) {
-        statusMessage.textContent =
-          "Укажи Project URL и Publishable key в коде index.html.";
-        return;
+      if (SUPABASE_URL.includes("YOUR_PROJECT_REF") ||
+          SUPABASE_KEY === "YOUR_PUBLISHABLE_KEY") {
+        throw new Error("Укажи Project URL и Publishable key в index.html.");
       }
 
       if (!window.supabase) {
-        statusMessage.textContent =
-          "Библиотека Supabase не загрузилась. Проверь интернет.";
-        return;
+        throw new Error("Библиотека Supabase не загрузилась.");
       }
 
       db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
         auth: { persistSession: false }
       });
 
-      form.addEventListener("submit", saveNote);
-      statusMessage.textContent = "Загружаю заметки…";
-
-      const loaded = await loadNotes();
-
-      if (loaded) {
-        statusMessage.textContent =
-          list.children.length === 0 ? "Заметок пока нет." : "";
-      }
-
-      button.disabled = false;
+      return db;
     }
 
-    start().catch(function (error) {
-      statusMessage.textContent = "Ошибка подключения: " + error.message;
-    });</script>
+    async function writeMessage(event) {
+      event.preventDefault(); // Форма отправляется без перезагрузки страницы.
+
+      const username = usernameInput.value.trim();
+      const message = messageInput.value.trim();
+
+      if (!username || !message) {
+        result.textContent = "Заполни оба поля.";
+        return;
+      }
+
+      controls.disabled = true;
+      result.textContent = "Записываю…";
+
+      try {
+        // Добавляем одну строку с именем и сообщением.
+        const { error } = await getDatabase()
+          .from("demo_messages")
+          .insert({ username: username, message: message });
+
+        if (error) {
+          throw error;
+        }
+
+        messageInput.value = "";
+        result.textContent = "Запись добавлена в БД.";
+      } catch (error) {
+        result.textContent = "Ошибка записи. " + error.message;
+      } finally {
+        controls.disabled = false;
+      }
+    }
+
+    async function readMessages() {
+      controls.disabled = true;
+      result.textContent = "Читаю записи…";
+
+      try {
+        // Читаем имя и сообщение. Новые записи идут первыми.
+        const { data, error } = await getDatabase()
+          .from("demo_messages")
+          .select("username, message")
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (error) {
+          throw error;
+        }
+
+        const lines = [];
+
+        for (const row of data) {
+          lines.push(row.username + ": " + row.message);
+        }
+
+        if (lines.length === 0) {
+          result.textContent = "Записей пока нет.";
+        } else {
+          result.textContent = lines.join("\n");
+        }
+      } catch (error) {
+        result.textContent = "Ошибка чтения. " + error.message;
+      } finally {
+        controls.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", writeMessage);
+    document.getElementById("read-button").addEventListener("click", readMessages);
+  </script>
 </body>
 </html>
